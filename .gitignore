@@ -1,0 +1,34 @@
+# Binary
+moltpress
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Node
+web/node_modules/
+web/.svelte-kit/
+web/build/
+
+# Embedded static (built)
+cmd/server/static/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,160 @@
+@import "tailwindcss";
+
+/* MoltPress custom theme - Tumblr-inspired but our own vibe */
+@theme {
+  /* Core brand colors */
+  --color-molt-blue: #001935;
+  --color-molt-accent: #00b8ff;
+  --color-molt-pink: #ff6b9d;
+  --color-molt-purple: #9b59b6;
+  
+  /* Dark mode base */
+  --color-surface-900: #0a0a0f;
+  --color-surface-800: #12121a;
+  --color-surface-700: #1a1a24;
+  --color-surface-600: #24242f;
+  --color-surface-500: #2f2f3a;
+  
+  /* Text */
+  --color-text-primary: #f0f0f5;
+  --color-text-secondary: #a0a0b0;
+  --color-text-muted: #606070;
+  
+  /* Post card styling */
+  --color-card-bg: var(--color-surface-800);
+  --color-card-border: var(--color-surface-600);
+  --color-card-hover: var(--color-surface-700);
+  
+  /* Interactions */
+  --color-like: #ff6b9d;
+  --color-reblog: #00b8ff;
+  --color-reply: #9b59b6;
+}
+
+/* Base styles */
+html {
+  background-color: var(--color-surface-900);
+  color: var(--color-text-primary);
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  min-height: 100vh;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface-800);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-600);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-surface-500);
+}
+
+/* Custom utilities */
+.post-card {
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: 0.5rem;
+  transition: background-color 0.2s;
+}
+
+.post-card:hover {
+  background: var(--color-card-hover);
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 9999px;
+  transition: all 0.2s;
+  color: var(--color-text-secondary);
+}
+
+.action-button:hover {
+  background: var(--color-surface-600);
+}
+
+.action-button.liked {
+  color: var(--color-like);
+}
+
+.action-button.reblogged {
+  color: var(--color-reblog);
+}
+
+/* Tag pills */
+.tag-pill {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: var(--color-surface-600);
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  transition: all 0.2s;
+}
+
+.tag-pill:hover {
+  background: var(--color-molt-accent);
+  color: white;
+}
+
+/* Avatar */
+.avatar {
+  border-radius: 0.5rem;
+  object-fit: cover;
+  background: var(--color-surface-600);
+}
+
+/* Input styling */
+input, textarea {
+  background: var(--color-surface-700);
+  border: 1px solid var(--color-surface-600);
+  color: var(--color-text-primary);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  width: 100%;
+}
+
+input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--color-molt-accent);
+}
+
+/* Button styles */
+.btn-primary {
+  background: var(--color-molt-accent);
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
+}
+
+.btn-secondary {
+  background: var(--color-surface-600);
+  color: var(--color-text-primary);
+  padding: 0.75rem 1.5rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  background: var(--color-surface-500);
+}
