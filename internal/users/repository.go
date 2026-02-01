@@ -26,14 +26,28 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) Create(ctx context.Context, req CreateUserRequest) (*User, string, error) {
+type CreateResult struct {
+	User             *User
+	APIKey           string
+	VerificationCode string
+}
+
+func (r *Repository) Create(ctx context.Context, req CreateUserRequest) (*CreateResult, error) {
 	// Generate API key for agents
 	var apiKey *string
 	var apiKeyPlain string
+	var verificationCode *string
+	var verificationCodePlain string
+
 	if req.IsAgent {
 		key := generateAPIKey()
 		apiKey = &key
 		apiKeyPlain = key
+
+		// Generate verification code for X validation
+		code := generateVerificationCode()
+		verificationCode = &code
+		verificationCodePlain = code
 	}
 
 	// Hash password if provided
@@ -41,7 +55,7 @@ func (r *Repository) Create(ctx context.Context, req CreateUserRequest) (*User, 
 	if req.Password != nil && *req.Password != "" {
 		hash, err := bcrypt.GenerateFromPassword([]byte(*req.Password), bcrypt.DefaultCost)
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
 		hashStr := string(hash)
 		passwordHash = &hashStr
@@ -49,21 +63,32 @@ func (r *Repository) Create(ctx context.Context, req CreateUserRequest) (*User, 
 
 	user := &User{}
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO users (username, display_name, bio, avatar_url, api_key, password_hash, is_agent)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, username, display_name, bio, avatar_url, header_url, is_agent, created_at, updated_at
-	`, req.Username, req.DisplayName, req.Bio, req.AvatarURL, apiKey, passwordHash, req.IsAgent).Scan(
+		INSERT INTO users (username, display_name, bio, avatar_url, api_key, password_hash, is_agent, verification_code)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, username, display_name, bio, avatar_url, header_url, is_agent, verification_code, verified_at, x_username, created_at, updated_at
+	`, req.Username, req.DisplayName, req.Bio, req.AvatarURL, apiKey, passwordHash, req.IsAgent, verificationCode).Scan(
 		&user.ID, &user.Username, &user.DisplayName, &user.Bio,
-		&user.AvatarURL, &user.HeaderURL, &user.IsAgent, &user.CreatedAt, &user.UpdatedAt,
+		&user.AvatarURL, &user.HeaderURL, &user.IsAgent, &user.VerificationCode,
+		&user.VerifiedAt, &user.XUsername, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
 		if err.Error() == `ERROR: duplicate key value violates unique constraint "users_username_key" (SQLSTATE 23505)` {
-			return nil, "", ErrUsernameExists
+			return nil, ErrUsernameExists
 		}
-		return nil, "", err
+		return nil, err
 	}
 
-	return user, apiKeyPlain, nil
+	return &CreateResult{
+		User:             user,
+		APIKey:           apiKeyPlain,
+		VerificationCode: verificationCodePlain,
+	}, nil
+}
+
+func generateVerificationCode() string {
+	bytes := make([]byte, 8)
+	rand.Read(bytes)
+	return "MP-" + hex.EncodeToString(bytes)
 }
 
 func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
@@ -227,4 +252,57 @@ func generateAPIKey() string {
 	bytes := make([]byte, 32)
 	rand.Read(bytes)
 	return "mp_" + hex.EncodeToString(bytes)
+}
+
+func (r *Repository) GetByVerificationCode(ctx context.Context, code string) (*User, error) {
+	user := &User{}
+	err := r.db.QueryRow(ctx, `
+		SELECT id, username, display_name, bio, avatar_url, header_url, is_agent,
+			   verification_code, verified_at, x_username, created_at, updated_at
+		FROM users WHERE verification_code = $1
+	`, code).Scan(
+		&user.ID, &user.Username, &user.DisplayName, &user.Bio,
+		&user.AvatarURL, &user.HeaderURL, &user.IsAgent,
+		&user.VerificationCode, &user.VerifiedAt, &user.XUsername,
+		&user.CreatedAt, &user.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+	return user, nil
+}
+
+func (r *Repository) VerifyUser(ctx context.Context, userID uuid.UUID, xUsername string) (*User, error) {
+	user := &User{}
+	err := r.db.QueryRow(ctx, `
+		UPDATE users SET
+			verified_at = CURRENT_TIMESTAMP,
+			x_username = $2,
+			verification_code = NULL,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+		RETURNING id, username, display_name, bio, avatar_url, header_url, is_agent,
+				  verification_code, verified_at, x_username, created_at, updated_at
+	`, userID, xUsername).Scan(
+		&user.ID, &user.Username, &user.DisplayName, &user.Bio,
+		&user.AvatarURL, &user.HeaderURL, &user.IsAgent,
+		&user.VerificationCode, &user.VerifiedAt, &user.XUsername,
+		&user.CreatedAt, &user.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+func (r *Repository) IsVerified(ctx context.Context, userID uuid.UUID) (bool, error) {
+	var verifiedAt *string
+	err := r.db.QueryRow(ctx, `SELECT verified_at FROM users WHERE id = $1`, userID).Scan(&verifiedAt)
+	if err != nil {
+		return false, err
+	}
+	return verifiedAt != nil, nil
 }

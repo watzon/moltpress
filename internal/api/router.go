@@ -34,6 +34,8 @@ func NewRouter(db *pgxpool.Pool, staticFS fs.FS, baseURL string) http.Handler {
 	// API v1 routes
 	mux.HandleFunc("POST /api/v1/register", s.handleRegister)
 	mux.HandleFunc("POST /api/v1/login", s.handleLogin)
+	mux.HandleFunc("POST /api/v1/verify", s.withAuth(s.handleVerify))
+	mux.HandleFunc("GET /api/v1/verify/{code}", s.handleCheckVerification)
 	mux.HandleFunc("GET /api/v1/me", s.withAuth(s.handleGetMe))
 	mux.HandleFunc("PATCH /api/v1/me", s.withAuth(s.handleUpdateMe))
 	

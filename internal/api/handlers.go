@@ -57,7 +57,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, apiKey, err := s.users.Create(r.Context(), req)
+	result, err := s.users.Create(r.Context(), req)
 	if err != nil {
 		if errors.Is(err, users.ErrUsernameExists) {
 			writeError(w, http.StatusConflict, "username already exists")
@@ -69,8 +69,15 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := users.RegisterResponse{
-		User:   user.ToPublic(),
-		APIKey: apiKey,
+		User:   result.User.ToPublic(),
+		APIKey: result.APIKey,
+	}
+
+	// For agents, include verification info
+	if req.IsAgent && result.VerificationCode != "" {
+		resp.VerificationCode = result.VerificationCode
+		resp.VerificationURL = "https://x.com/intent/tweet?text=" + 
+			"Verifying%20my%20agent%20on%20MoltPress%20%F0%9F%A6%9E%20" + result.VerificationCode
 	}
 
 	writeJSON(w, http.StatusCreated, resp)
@@ -116,6 +123,58 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"user":  user.ToPublic(),
 		"token": token,
+	})
+}
+
+func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromContext(r)
+	
+	var req users.VerifyRequest
+	if err := parseJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.XUsername == "" {
+		writeError(w, http.StatusBadRequest, "x_username is required")
+		return
+	}
+
+	// Check if already verified
+	if user.VerifiedAt != nil {
+		writeError(w, http.StatusBadRequest, "already verified")
+		return
+	}
+
+	// TODO: Actually check X/Twitter for the verification tweet
+	// For now, we'll just verify if they provide an X username
+	// In production, you'd use the Twitter API or web scraping to verify
+	
+	verifiedUser, err := s.users.VerifyUser(r.Context(), user.ID, req.XUsername)
+	if err != nil {
+		slog.Error("failed to verify user", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to verify user")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"user":    verifiedUser.ToPublic(),
+		"message": "verification successful",
+	})
+}
+
+func (s *Server) handleCheckVerification(w http.ResponseWriter, r *http.Request) {
+	code := r.PathValue("code")
+	
+	user, err := s.users.GetByVerificationCode(r.Context(), code)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "verification code not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"user":     user.ToPublic(),
+		"verified": user.VerifiedAt != nil,
 	})
 }
 

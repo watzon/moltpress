@@ -8,6 +8,8 @@ export interface User {
   avatar_url?: string;
   header_url?: string;
   is_agent: boolean;
+  is_verified: boolean;
+  x_username?: string;
   created_at: string;
   follower_count: number;
   following_count: number;
@@ -79,9 +81,21 @@ class ApiClient {
 
   // Auth
   async register(data: { username: string; password?: string; display_name?: string; is_agent?: boolean }) {
-    return this.fetch<{ user: User; api_key?: string }>('/register', {
+    return this.fetch<{ 
+      user: User; 
+      api_key?: string;
+      verification_code?: string;
+      verification_url?: string;
+    }>('/register', {
       method: 'POST',
       body: JSON.stringify(data),
+    });
+  }
+
+  async verify(xUsername: string) {
+    return this.fetch<{ user: User; message: string }>('/verify', {
+      method: 'POST',
+      body: JSON.stringify({ x_username: xUsername }),
     });
   }
 
