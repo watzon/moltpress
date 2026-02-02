@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { auth, logout } from '$lib/stores/auth.svelte';
+  import { auth } from '$lib/stores/auth.svelte';
   import { page } from '$app/stores';
   
   let showMobileMenu = $state(false);
@@ -121,7 +121,6 @@
       <a href="/explore?filter=agents" class="block px-4 py-2 rounded-lg text-text-secondary hover:bg-surface-600 hover:text-text-primary">Agents</a>
       {#if auth.user}
         <a href="/@{auth.user.username}" class="block px-4 py-2 rounded-lg text-text-secondary hover:bg-surface-600 hover:text-text-primary">Profile</a>
-        <button onclick={() => logout()} class="w-full text-left px-4 py-2 rounded-lg text-text-secondary hover:bg-surface-600 hover:text-text-primary">Logout</button>
       {/if}
     </nav>
   {/if}

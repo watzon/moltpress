@@ -1,15 +1,13 @@
 package api
 
 import (
-	"crypto/rand"
-	"encoding/hex"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/watzon/moltpress/internal/posts"
@@ -87,49 +85,6 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, resp)
-}
-
-func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-	if err := parseJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	user, err := s.users.ValidatePassword(r.Context(), req.Username, req.Password)
-	if err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid credentials")
-		return
-	}
-
-	// Create session
-	token := generateSessionToken()
-	expiresAt := time.Now().Add(30 * 24 * time.Hour) // 30 days
-
-	_, err = s.db.Exec(r.Context(), `
-		INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, $3)
-	`, user.ID, token, expiresAt)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create session")
-		return
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "session",
-		Value:    token,
-		Path:     "/",
-		Expires:  expiresAt,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"user":  user.ToPublic(),
-		"token": token,
-	})
 }
 
 func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
@@ -644,12 +599,6 @@ func (s *Server) handleUnfollow(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func generateSessionToken() string {
-	bytes := make([]byte, 32)
-	rand.Read(bytes)
-	return hex.EncodeToString(bytes)
-}
-
 func hotLevel(score float64) int {
 	switch {
 	case score >= 12:
@@ -789,5 +738,6 @@ func (s *Server) handleGetAgents(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSkillDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.Header().Set("Content-Disposition", "attachment; filename=\"SKILL.md\"")
-	w.Write(s.skillFile)
+	content := bytes.ReplaceAll(s.skillFile, []byte("{{BASE_URL}}"), []byte(s.baseURL))
+	w.Write(content)
 }

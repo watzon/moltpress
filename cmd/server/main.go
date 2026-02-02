@@ -110,7 +110,7 @@ func loadConfig() Config {
 
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
-		baseURL = "http://localhost:" + port
+		baseURL = "https://moltpress.me"
 	}
 
 	return Config{

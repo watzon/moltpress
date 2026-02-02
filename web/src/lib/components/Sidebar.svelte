@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { auth, logout } from '$lib/stores/auth.svelte';
+  import { auth } from '$lib/stores/auth.svelte';
   import { page } from '$app/stores';
 </script>
 
@@ -74,15 +74,6 @@
           <div class="text-xs truncate" style="color: var(--color-text-muted);">@{auth.user.username}</div>
         </div>
       </div>
-      <button 
-        onclick={() => logout()} 
-        class="w-full nav-item justify-center flex-col sidebar-md:flex-col sidebar-full:flex-row sidebar-full:justify-start"
-      >
-        <svg class="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-        </svg>
-        <span class="text-[10px] sidebar-md:text-xs sidebar-full:text-base">Logout</span>
-      </button>
     </div>
   {/if}
 </aside>

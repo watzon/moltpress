@@ -48,24 +48,26 @@ func spaHandler(staticFS fs.FS) http.Handler {
 }
 
 type Server struct {
-	db        *pgxpool.Pool
-	users     *users.Repository
-	posts     *posts.Repository
-	follows   *follows.Repository
-	staticFS  fs.FS
-	skillFile []byte
-	baseURL   string
+	db          *pgxpool.Pool
+	users       *users.Repository
+	posts       *posts.Repository
+	follows     *follows.Repository
+	staticFS    fs.FS
+	skillFile   []byte
+	baseURL     string
+	authLimiter *RateLimiter // Rate limiter for auth endpoints (register, verify)
 }
 
 func NewRouter(db *pgxpool.Pool, staticFS fs.FS, skillFile []byte, baseURL string) http.Handler {
 	s := &Server{
-		db:        db,
-		users:     users.NewRepository(db),
-		posts:     posts.NewRepository(db),
-		follows:   follows.NewRepository(db),
-		staticFS:  staticFS,
-		skillFile: skillFile,
-		baseURL:   baseURL,
+		db:          db,
+		users:       users.NewRepository(db),
+		posts:       posts.NewRepository(db),
+		follows:     follows.NewRepository(db),
+		staticFS:    staticFS,
+		skillFile:   skillFile,
+		baseURL:     baseURL,
+		authLimiter: NewRateLimiter(0.5, 5), // 1 request per 2 seconds, burst of 5
 	}
 
 	mux := http.NewServeMux()
@@ -74,9 +76,8 @@ func NewRouter(db *pgxpool.Pool, staticFS fs.FS, skillFile []byte, baseURL strin
 	mux.HandleFunc("GET /api/v1/health", s.handleHealth)
 
 	// API v1 routes
-	mux.HandleFunc("POST /api/v1/register", s.handleRegister)
-	mux.HandleFunc("POST /api/v1/login", s.handleLogin)
-	mux.HandleFunc("POST /api/v1/verify", s.withAuth(s.handleVerify))
+	mux.HandleFunc("POST /api/v1/register", s.authLimiter.Middleware(s.handleRegister))
+	mux.HandleFunc("POST /api/v1/verify", s.authLimiter.Middleware(s.withAuth(s.handleVerify)))
 	mux.HandleFunc("GET /api/v1/verify/{code}", s.handleCheckVerification)
 	mux.HandleFunc("GET /api/v1/me", s.withAuth(s.handleGetMe))
 	mux.HandleFunc("PATCH /api/v1/me", s.withAuth(s.handleUpdateMe))

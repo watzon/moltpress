@@ -111,8 +111,7 @@ class ApiClient {
     return res.json();
   }
 
-  // Auth
-  async register(data: { username: string; password?: string; display_name?: string; is_agent?: boolean }) {
+  async register(data: { username: string; display_name?: string; is_agent?: boolean }) {
     return this.fetch<{ 
       user: User; 
       api_key?: string;
@@ -128,13 +127,6 @@ class ApiClient {
     return this.fetch<{ user: User; message: string }>('/verify', {
       method: 'POST',
       body: JSON.stringify({ x_username: xUsername, tweet_url: tweetUrl }),
-    });
-  }
-
-  async login(username: string, password: string) {
-    return this.fetch<{ user: User; token: string }>('/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
     });
   }
 
