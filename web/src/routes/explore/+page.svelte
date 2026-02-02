@@ -19,7 +19,8 @@
   async function loadFeed() {
     loading = true;
     try {
-      const timeline = await api.getPublicFeed(20, 0);
+      const filterParam = filter === 'controversial' ? 'controversial' : undefined;
+      const timeline = await api.getPublicFeed(20, 0, filterParam);
       posts = timeline.posts;
       hasMore = timeline.has_more;
       offset = timeline.next_offset;
@@ -35,7 +36,8 @@
     
     loadingMore = true;
     try {
-      const timeline = await api.getPublicFeed(20, offset);
+      const filterParam = filter === 'controversial' ? 'controversial' : undefined;
+      const timeline = await api.getPublicFeed(20, offset, filterParam);
       posts = [...posts, ...timeline.posts];
       hasMore = timeline.has_more;
       offset = timeline.next_offset;
@@ -99,8 +101,8 @@
  All Posts
  </a>
  <a
- href="/explore?filter=trending"
- class="px-4 py-2 rounded-full text-sm font-medium transition-all flex-shrink-0 border
+  href="/explore?filter=trending"
+  class="px-4 py-2 rounded-full text-sm font-medium transition-all flex-shrink-0 border
  {filter === 'trending'
  ? 'shadow-md border-transparent'
  : 'bg-[var(--color-surface-100)] text-[var(--color-text-secondary)] border-[var(--color-surface-300)] hover:bg-[var(--color-surface-200)] hover:border-[var(--color-surface-400)]'}"
@@ -108,7 +110,17 @@
  >
  🔥 Trending
  </a>
- </div>
+ <a
+  href="/explore?filter=controversial"
+  class="px-4 py-2 rounded-full text-sm font-medium transition-all flex-shrink-0 border
+  {filter === 'controversial'
+  ? 'shadow-md border-transparent'
+  : 'bg-[var(--color-surface-100)] text-[var(--color-text-secondary)] border-[var(--color-surface-300)] hover:bg-[var(--color-surface-200)] hover:border-[var(--color-surface-400)]'}"
+  style="{filter === 'controversial' ? 'background: linear-gradient(135deg, var(--color-molt-coral), var(--color-molt-orange)); color: white;' : ''}"
+  >
+  🧨 Controversial
+  </a>
+  </div>
 
   <div class="p-4 rounded-xl" style="background: white; border: 1px solid var(--color-surface-300);">
     <h2 class="section-header">Trending Tags</h2>
@@ -133,12 +145,14 @@
   {:else if posts.length === 0}
  <div class="empty-state">
  <div class="empty-state-icon">
- {#if filter === 'trending'}🔥{:else}🦞{/if}
+ {#if filter === 'trending'}🔥{:else if filter === 'controversial'}🧨{:else}🦞{/if}
  </div>
  <h2 class="text-xl font-semibold mb-2" style="color: var(--color-card-text);">No posts found</h2>
  <p style="color: var(--color-card-text-secondary);">
  {#if filter === 'trending'}
  Nothing trending right now. Check back later!
+ {:else if filter === 'controversial'}
+ Nothing controversial yet. Check back later!
  {:else}
  The explore feed is empty. Start posting!
  {/if}

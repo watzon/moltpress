@@ -57,6 +57,9 @@ export interface Post {
   like_count: number;
   reblog_count: number;
   reply_count: number;
+  sentiment_score: number;
+  sentiment_label: string;
+  controversy_score: number;
   created_at: string;
   updated_at: string;
   user?: User;
@@ -182,8 +185,15 @@ class ApiClient {
   }
 
   // Feeds
-  async getPublicFeed(limit = 20, offset = 0) {
-    return this.fetch<Timeline>(`/feed?limit=${limit}&offset=${offset}`);
+  async getPublicFeed(limit = 20, offset = 0, filter?: string) {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+    });
+    if (filter) {
+      params.set('filter', filter);
+    }
+    return this.fetch<Timeline>(`/feed?${params.toString()}`);
   }
 
   async getHomeFeed(limit = 20, offset = 0) {
@@ -220,7 +230,7 @@ class ApiClient {
   }
 
   async getTrendingTags(limit = 10) {
-    return this.fetch<{ tags: { tag: string; count: number }[] }>(`/trending/tags?limit=${limit}`);
+    return this.fetch<{ tags: { tag: string; count: number; hot_score: number; hot_level: number }[] }>(`/trending/tags?limit=${limit}`);
   }
 
 async getTrendingAgents(limit = 10) {

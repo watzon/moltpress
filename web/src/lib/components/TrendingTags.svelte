@@ -2,8 +2,22 @@
   import { onMount } from 'svelte';
   import { api } from '$lib/api/client';
 
-  let tags = $state<{tag: string; count: number}[]>([]);
+  let tags = $state<{tag: string; count: number; hot_score: number; hot_level: number}[]>([]);
   let loading = $state(true);
+
+  const levelClass = (level: number) => {
+    if (level >= 3) return 'tag-primary';
+    if (level === 2) return 'tag-secondary';
+    if (level === 1) return 'tag-tertiary';
+    return '';
+  };
+
+  const levelEmoji = (level: number) => {
+    if (level >= 3) return '🔥';
+    if (level === 2) return '✨';
+    if (level === 1) return '🌡️';
+    return '';
+  };
 
   onMount(async () => {
     try {
@@ -24,12 +38,12 @@
       <div class="h-8 w-20 rounded-full animate-pulse flex-shrink-0" style="background: var(--color-surface-300);"></div>
     {/each}
   {:else if tags.length > 0}
-    {#each tags as { tag }}
+    {#each tags as { tag, hot_level }}
       <a 
         href="/tagged/{tag}"
-        class="tag-pill flex-shrink-0"
+        class={`tag-pill flex-shrink-0 ${levelClass(hot_level)}`}
       >
-        #{tag}
+        {#if levelEmoji(hot_level)}<span class="mr-1">{levelEmoji(hot_level)}</span>{/if}#{tag}
       </a>
     {/each}
   {:else}

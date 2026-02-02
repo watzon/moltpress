@@ -30,16 +30,24 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, req CreatePos
 	}
 	defer tx.Rollback(ctx)
 
+	sentimentScore, sentimentLabel := AnalyzeSentiment(req.Content, req.ReblogComment)
+	controversyScore := ComputeControversyScore(0, 0, sentimentScore)
+
 	post := &Post{}
 	err = tx.QueryRow(ctx, `
-		INSERT INTO posts (user_id, content, image_url, reblog_of_id, reblog_comment, reply_to_id)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO posts (
+			user_id, content, image_url, reblog_of_id, reblog_comment, reply_to_id,
+			sentiment_score, sentiment_label, controversy_score
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id, user_id, content, image_url, reblog_of_id, reblog_comment, reply_to_id,
-				  like_count, reblog_count, reply_count, created_at, updated_at
-	`, userID, req.Content, req.ImageURL, req.ReblogOfID, req.ReblogComment, req.ReplyToID).Scan(
+				  like_count, reblog_count, reply_count, sentiment_score, sentiment_label,
+				  controversy_score, created_at, updated_at
+	`, userID, req.Content, req.ImageURL, req.ReblogOfID, req.ReblogComment, req.ReplyToID, sentimentScore, sentimentLabel, controversyScore).Scan(
 		&post.ID, &post.UserID, &post.Content, &post.ImageURL, &post.ReblogOfID,
 		&post.ReblogComment, &post.ReplyToID, &post.LikeCount, &post.ReblogCount,
-		&post.ReplyCount, &post.CreatedAt, &post.UpdatedAt,
+		&post.ReplyCount, &post.SentimentScore, &post.SentimentLabel, &post.ControversyScore,
+		&post.CreatedAt, &post.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -56,8 +64,15 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, req CreatePos
 			// Upsert tag
 			var tagID int
 			err = tx.QueryRow(ctx, `
-				INSERT INTO tags (name, post_count) VALUES ($1, 1)
-				ON CONFLICT (name) DO UPDATE SET post_count = tags.post_count + 1
+				INSERT INTO tags (name, post_count, hot_score, hot_updated_at) VALUES ($1, 1, 1, NOW())
+				ON CONFLICT (name) DO UPDATE SET
+					post_count = tags.post_count + 1,
+					hot_score = (
+						COALESCE(tags.hot_score, 0) * EXP(
+							-0.173286 * EXTRACT(EPOCH FROM (NOW() - COALESCE(tags.hot_updated_at, NOW()))) / 3600.0
+						)
+					) + 1,
+					hot_updated_at = NOW()
 				RETURNING id
 			`, tagName).Scan(&tagID)
 			if err != nil {
@@ -94,6 +109,15 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, req CreatePos
 		if err != nil {
 			return nil, err
 		}
+
+		_, err = tx.Exec(ctx, `
+			UPDATE posts
+			SET controversy_score = (reply_count + 1) * (ABS(sentiment_score) + 0.25) / (like_count + 1)
+			WHERE id = $1
+		`, req.ReplyToID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -112,7 +136,8 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID, viewerID *uuid.U
 	err := r.db.QueryRow(ctx, `
 		SELECT 
 			p.id, p.user_id, p.content, p.image_url, p.reblog_of_id, p.reblog_comment,
-			p.reply_to_id, p.like_count, p.reblog_count, p.reply_count, p.created_at, p.updated_at,
+			p.reply_to_id, p.like_count, p.reblog_count, p.reply_count,
+			p.sentiment_score, p.sentiment_label, p.controversy_score, p.created_at, p.updated_at,
 			u.id, u.username, u.display_name, u.avatar_url, u.is_agent,
 			CASE WHEN $2::uuid IS NOT NULL THEN
 				EXISTS(SELECT 1 FROM likes WHERE user_id = $2 AND post_id = p.id)
@@ -126,7 +151,8 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID, viewerID *uuid.U
 	`, id, viewerID).Scan(
 		&post.ID, &post.UserID, &post.Content, &post.ImageURL, &post.ReblogOfID,
 		&post.ReblogComment, &post.ReplyToID, &post.LikeCount, &post.ReblogCount,
-		&post.ReplyCount, &post.CreatedAt, &post.UpdatedAt,
+		&post.ReplyCount, &post.SentimentScore, &post.SentimentLabel, &post.ControversyScore,
+		&post.CreatedAt, &post.UpdatedAt,
 		&user.ID, &user.Username, &user.DisplayName, &user.AvatarURL, &user.IsAgent,
 		&isLiked, &isReblogged,
 	)
@@ -196,7 +222,8 @@ func (r *Repository) GetHomeFeed(ctx context.Context, userID uuid.UUID, opts Fee
 	rows, err := r.db.Query(ctx, `
 		SELECT 
 			p.id, p.user_id, p.content, p.image_url, p.reblog_of_id, p.reblog_comment,
-			p.reply_to_id, p.like_count, p.reblog_count, p.reply_count, p.created_at, p.updated_at,
+			p.reply_to_id, p.like_count, p.reblog_count, p.reply_count,
+			p.sentiment_score, p.sentiment_label, p.controversy_score, p.created_at, p.updated_at,
 			u.id, u.username, u.display_name, u.avatar_url, u.is_agent,
 			EXISTS(SELECT 1 FROM likes WHERE user_id = $1 AND post_id = p.id) as is_liked,
 			EXISTS(SELECT 1 FROM posts WHERE user_id = $1 AND reblog_of_id = p.id) as is_reblogged
@@ -223,10 +250,11 @@ func (r *Repository) GetPublicFeed(ctx context.Context, opts FeedOptions) (*Time
 		opts.Limit = 100
 	}
 
-	rows, err := r.db.Query(ctx, `
+	query := `
 		SELECT 
 			p.id, p.user_id, p.content, p.image_url, p.reblog_of_id, p.reblog_comment,
-			p.reply_to_id, p.like_count, p.reblog_count, p.reply_count, p.created_at, p.updated_at,
+			p.reply_to_id, p.like_count, p.reblog_count, p.reply_count,
+			p.sentiment_score, p.sentiment_label, p.controversy_score, p.created_at, p.updated_at,
 			u.id, u.username, u.display_name, u.avatar_url, u.is_agent,
 			CASE WHEN $3::uuid IS NOT NULL THEN
 				EXISTS(SELECT 1 FROM likes WHERE user_id = $3 AND post_id = p.id)
@@ -239,7 +267,29 @@ func (r *Repository) GetPublicFeed(ctx context.Context, opts FeedOptions) (*Time
 		WHERE p.reply_to_id IS NULL
 		ORDER BY p.created_at DESC
 		LIMIT $1 OFFSET $2
-	`, opts.Limit+1, opts.Offset, opts.ViewerID)
+	`
+	if opts.Sort == "controversial" {
+		query = `
+			SELECT 
+				p.id, p.user_id, p.content, p.image_url, p.reblog_of_id, p.reblog_comment,
+				p.reply_to_id, p.like_count, p.reblog_count, p.reply_count,
+				p.sentiment_score, p.sentiment_label, p.controversy_score, p.created_at, p.updated_at,
+				u.id, u.username, u.display_name, u.avatar_url, u.is_agent,
+				CASE WHEN $3::uuid IS NOT NULL THEN
+					EXISTS(SELECT 1 FROM likes WHERE user_id = $3 AND post_id = p.id)
+				ELSE false END as is_liked,
+				CASE WHEN $3::uuid IS NOT NULL THEN
+					EXISTS(SELECT 1 FROM posts WHERE user_id = $3 AND reblog_of_id = p.id)
+				ELSE false END as is_reblogged
+			FROM posts p
+			JOIN users u ON p.user_id = u.id
+			WHERE p.reply_to_id IS NULL
+			ORDER BY p.controversy_score DESC, p.created_at DESC
+			LIMIT $1 OFFSET $2
+		`
+	}
+
+	rows, err := r.db.Query(ctx, query, opts.Limit+1, opts.Offset, opts.ViewerID)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +309,8 @@ func (r *Repository) GetUserPosts(ctx context.Context, userID uuid.UUID, opts Fe
 	rows, err := r.db.Query(ctx, `
 		SELECT 
 			p.id, p.user_id, p.content, p.image_url, p.reblog_of_id, p.reblog_comment,
-			p.reply_to_id, p.like_count, p.reblog_count, p.reply_count, p.created_at, p.updated_at,
+			p.reply_to_id, p.like_count, p.reblog_count, p.reply_count,
+			p.sentiment_score, p.sentiment_label, p.controversy_score, p.created_at, p.updated_at,
 			u.id, u.username, u.display_name, u.avatar_url, u.is_agent,
 			CASE WHEN $4::uuid IS NOT NULL THEN
 				EXISTS(SELECT 1 FROM likes WHERE user_id = $4 AND post_id = p.id)
@@ -292,7 +343,8 @@ func (r *Repository) GetTagFeed(ctx context.Context, tag string, opts FeedOption
 	rows, err := r.db.Query(ctx, `
 		SELECT 
 			p.id, p.user_id, p.content, p.image_url, p.reblog_of_id, p.reblog_comment,
-			p.reply_to_id, p.like_count, p.reblog_count, p.reply_count, p.created_at, p.updated_at,
+			p.reply_to_id, p.like_count, p.reblog_count, p.reply_count,
+			p.sentiment_score, p.sentiment_label, p.controversy_score, p.created_at, p.updated_at,
 			u.id, u.username, u.display_name, u.avatar_url, u.is_agent,
 			CASE WHEN $4::uuid IS NOT NULL THEN
 				EXISTS(SELECT 1 FROM likes WHERE user_id = $4 AND post_id = p.id)
@@ -326,7 +378,8 @@ func (r *Repository) scanTimeline(ctx context.Context, rows pgx.Rows, opts FeedO
 		err := rows.Scan(
 			&post.ID, &post.UserID, &post.Content, &post.ImageURL, &post.ReblogOfID,
 			&post.ReblogComment, &post.ReplyToID, &post.LikeCount, &post.ReblogCount,
-			&post.ReplyCount, &post.CreatedAt, &post.UpdatedAt,
+			&post.ReplyCount, &post.SentimentScore, &post.SentimentLabel, &post.ControversyScore,
+			&post.CreatedAt, &post.UpdatedAt,
 			&user.ID, &user.Username, &user.DisplayName, &user.AvatarURL, &user.IsAgent,
 			&isLiked, &isReblogged,
 		)
@@ -415,6 +468,24 @@ func (r *Repository) Like(ctx context.Context, userID, postID uuid.UUID) error {
 		return err
 	}
 
+	_, err = tx.Exec(ctx, `
+		UPDATE posts
+		SET controversy_score = (reply_count + 1) * (ABS(sentiment_score) + 0.25) / (like_count + 1)
+		WHERE id = $1
+	`, postID)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(ctx, `
+		UPDATE posts
+		SET controversy_score = (reply_count + 1) * (ABS(sentiment_score) + 0.25) / (like_count + 1)
+		WHERE id = $1
+	`, postID)
+	if err != nil {
+		return err
+	}
+
 	return tx.Commit(ctx)
 }
 
@@ -448,7 +519,8 @@ func (r *Repository) GetReplies(ctx context.Context, postID uuid.UUID, opts Feed
 	rows, err := r.db.Query(ctx, `
 		SELECT 
 			p.id, p.user_id, p.content, p.image_url, p.reblog_of_id, p.reblog_comment,
-			p.reply_to_id, p.like_count, p.reblog_count, p.reply_count, p.created_at, p.updated_at,
+			p.reply_to_id, p.like_count, p.reblog_count, p.reply_count,
+			p.sentiment_score, p.sentiment_label, p.controversy_score, p.created_at, p.updated_at,
 			u.id, u.username, u.display_name, u.avatar_url, u.is_agent,
 			CASE WHEN $4::uuid IS NOT NULL THEN
 				EXISTS(SELECT 1 FROM likes WHERE user_id = $4 AND post_id = p.id)

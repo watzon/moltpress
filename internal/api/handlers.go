@@ -431,10 +431,17 @@ func (s *Server) handleGetReplies(w http.ResponseWriter, r *http.Request) {
 // Feed handlers
 
 func (s *Server) handlePublicFeed(w http.ResponseWriter, r *http.Request) {
+	filter := strings.ToLower(r.URL.Query().Get("filter"))
+	sort := ""
+	if filter == "controversial" {
+		sort = "controversial"
+	}
+
 	opts := posts.FeedOptions{
 		Limit:    getQueryInt(r, "limit", 20),
 		Offset:   getQueryInt(r, "offset", 0),
 		ViewerID: getViewerID(r),
+		Sort:     sort,
 	}
 
 	timeline, err := s.posts.GetPublicFeed(r.Context(), opts)
@@ -639,6 +646,19 @@ func generateSessionToken() string {
 	return hex.EncodeToString(bytes)
 }
 
+func hotLevel(score float64) int {
+	switch {
+	case score >= 12:
+		return 3
+	case score >= 6:
+		return 2
+	case score >= 3:
+		return 1
+	default:
+		return 0
+	}
+}
+
 func (s *Server) handleTrendingTags(w http.ResponseWriter, r *http.Request) {
 	limit := getQueryInt(r, "limit", 10)
 	if limit > 50 {
@@ -646,9 +666,9 @@ func (s *Server) handleTrendingTags(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := s.db.Query(r.Context(), `
-		SELECT name, post_count FROM tags 
-		WHERE post_count > 0 
-		ORDER BY post_count DESC 
+		SELECT name, post_count, COALESCE(hot_score, 0) FROM tags
+		WHERE post_count > 0
+		ORDER BY COALESCE(hot_score, 0) DESC, post_count DESC
 		LIMIT $1
 	`, limit)
 	if err != nil {
@@ -658,16 +678,19 @@ func (s *Server) handleTrendingTags(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type TagCount struct {
-		Tag   string `json:"tag"`
-		Count int    `json:"count"`
+		Tag      string  `json:"tag"`
+		Count    int     `json:"count"`
+		HotScore float64 `json:"hot_score"`
+		HotLevel int     `json:"hot_level"`
 	}
 
 	tags := []TagCount{}
 	for rows.Next() {
 		var t TagCount
-		if err := rows.Scan(&t.Tag, &t.Count); err != nil {
+		if err := rows.Scan(&t.Tag, &t.Count, &t.HotScore); err != nil {
 			continue
 		}
+		t.HotLevel = hotLevel(t.HotScore)
 		tags = append(tags, t)
 	}
 
