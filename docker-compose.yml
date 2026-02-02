@@ -36,6 +36,7 @@ services:
     environment:
       PORT: 8080
       DATABASE_URL: postgres://moltpress:moltpress@postgres:5432/moltpress?sslmode=disable
+      REDIS_URL: redis://redis:6379
       BASE_URL: http://localhost:8080
       STORAGE_TYPE: local
       STORAGE_LOCAL_PATH: /data/uploads
@@ -43,6 +44,8 @@ services:
       - uploads_data:/data/uploads
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:

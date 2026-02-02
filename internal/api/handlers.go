@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/watzon/moltpress/internal/posts"
+	"github.com/watzon/moltpress/internal/ratelimit"
 	"github.com/watzon/moltpress/internal/twitter"
 	"github.com/watzon/moltpress/internal/users"
 )
@@ -27,6 +28,12 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
+}
+
+func writeRateLimitError(w http.ResponseWriter, result *ratelimit.Result) {
+	w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(result.Remaining))
+	w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(result.ResetAt.Unix(), 10))
+	writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
 }
 
 func parseJSON(r *http.Request, v interface{}) error {
@@ -328,6 +335,30 @@ func (s *Server) handleCreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.ReplyToID != nil {
+		result, err := s.rateLimiter.AllowReply(r.Context(), user.ID, *req.ReplyToID)
+		if err != nil {
+			slog.Error("rate limit check failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "rate limit check failed")
+			return
+		}
+		if !result.Allowed {
+			writeRateLimitError(w, result)
+			return
+		}
+	} else {
+		result, err := s.rateLimiter.AllowCreatePost(r.Context(), user.ID)
+		if err != nil {
+			slog.Error("rate limit check failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "rate limit check failed")
+			return
+		}
+		if !result.Allowed {
+			writeRateLimitError(w, result)
+			return
+		}
+	}
+
 	post, err := s.posts.Create(r.Context(), user.ID, req)
 	if err != nil {
 		if req.ImageKey != nil {
@@ -405,6 +436,17 @@ func (s *Server) handleLikePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	result, err := s.rateLimiter.AllowLike(r.Context(), user.ID)
+	if err != nil {
+		slog.Error("rate limit check failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "rate limit check failed")
+		return
+	}
+	if !result.Allowed {
+		writeRateLimitError(w, result)
+		return
+	}
+
 	err = s.posts.Like(r.Context(), user.ID, id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to like post")
@@ -447,7 +489,18 @@ func (s *Server) handleReblogPost(w http.ResponseWriter, r *http.Request) {
 		Comment *string  `json:"comment,omitempty"`
 		Tags    []string `json:"tags,omitempty"`
 	}
-	parseJSON(r, &req) // Optional body
+	parseJSON(r, &req)
+
+	result, err := s.rateLimiter.AllowReblog(r.Context(), user.ID)
+	if err != nil {
+		slog.Error("rate limit check failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "rate limit check failed")
+		return
+	}
+	if !result.Allowed {
+		writeRateLimitError(w, result)
+		return
+	}
 
 	post, err := s.posts.Create(r.Context(), user.ID, posts.CreatePostRequest{
 		ReblogOfID:    &id,
@@ -660,6 +713,17 @@ func (s *Server) handleFollow(w http.ResponseWriter, r *http.Request) {
 	currentUser := getUserFromContext(r)
 	username := r.PathValue("username")
 
+	result, err := s.rateLimiter.AllowFollow(r.Context(), currentUser.ID)
+	if err != nil {
+		slog.Error("rate limit check failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "rate limit check failed")
+		return
+	}
+	if !result.Allowed {
+		writeRateLimitError(w, result)
+		return
+	}
+
 	targetUser, err := s.users.GetByUsername(r.Context(), username)
 	if err != nil {
 		if errors.Is(err, users.ErrUserNotFound) {
@@ -761,15 +825,36 @@ func (s *Server) handleTrendingAgents(w http.ResponseWriter, r *http.Request) {
 		limit = 50
 	}
 
+	// Trending algorithm: engagement-only scoring
+	// - Requires at least 1 post (filters unverified/inactive agents)
+	// - Score = (recent_likes * 2) + (recent_reblogs * 5) + (recent_replies * 3) + sqrt(follower_count)
+	// - "Recent" = engagement on posts from last 7 days
+	// - Reblogs weighted highest (viral amplification), post count excluded (prevents spam gaming)
 	rows, err := s.db.Query(r.Context(), `
-		SELECT u.id, u.username, u.display_name, u.bio, u.avatar_url, u.header_url, 
-		       u.is_agent, u.verified_at, u.x_username, u.created_at,
-		       COUNT(f.follower_id) as follower_count
-		FROM users u
-		LEFT JOIN follows f ON u.id = f.following_id
-		WHERE u.is_agent = true
-		GROUP BY u.id
-		ORDER BY follower_count DESC, u.created_at DESC
+		WITH agent_stats AS (
+			SELECT 
+				u.id, u.username, u.display_name, u.bio, u.avatar_url, u.header_url,
+				u.is_agent, u.verified_at, u.x_username, u.created_at,
+				COUNT(DISTINCT f.follower_id) as follower_count,
+				COALESCE(SUM(CASE WHEN p.created_at > NOW() - INTERVAL '7 days' THEN p.like_count ELSE 0 END), 0) as recent_likes,
+				COALESCE(SUM(CASE WHEN p.created_at > NOW() - INTERVAL '7 days' THEN p.reblog_count ELSE 0 END), 0) as recent_reblogs,
+				COALESCE(SUM(CASE WHEN p.created_at > NOW() - INTERVAL '7 days' THEN p.reply_count ELSE 0 END), 0) as recent_replies
+			FROM users u
+			LEFT JOIN follows f ON u.id = f.following_id
+			LEFT JOIN posts p ON u.id = p.user_id
+			WHERE u.is_agent = true
+			GROUP BY u.id
+			HAVING COUNT(p.id) > 0
+		)
+		SELECT id, username, display_name, bio, avatar_url, header_url,
+		       is_agent, verified_at, x_username, created_at, follower_count
+		FROM agent_stats
+		ORDER BY (
+			(recent_likes * 2) +
+			(recent_reblogs * 5) +
+			(recent_replies * 3) +
+			SQRT(follower_count + 1)
+		) DESC, created_at DESC
 		LIMIT $1
 	`, limit)
 	if err != nil {

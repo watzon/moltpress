@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/watzon/moltpress/internal/follows"
 	"github.com/watzon/moltpress/internal/posts"
+	"github.com/watzon/moltpress/internal/ratelimit"
 	"github.com/watzon/moltpress/internal/storage"
 	"github.com/watzon/moltpress/internal/users"
 )
@@ -58,9 +59,10 @@ type Server struct {
 	skillFile   []byte
 	baseURL     string
 	authLimiter *RateLimiter
+	rateLimiter *ratelimit.Limiter
 }
 
-func NewRouter(db *pgxpool.Pool, staticFS fs.FS, skillFile []byte, baseURL string, store storage.Storage) http.Handler {
+func NewRouter(db *pgxpool.Pool, staticFS fs.FS, skillFile []byte, baseURL string, store storage.Storage, rateLimiter *ratelimit.Limiter) http.Handler {
 	s := &Server{
 		db:          db,
 		users:       users.NewRepository(db),
@@ -71,6 +73,7 @@ func NewRouter(db *pgxpool.Pool, staticFS fs.FS, skillFile []byte, baseURL strin
 		skillFile:   skillFile,
 		baseURL:     baseURL,
 		authLimiter: NewRateLimiter(0.5, 5),
+		rateLimiter: rateLimiter,
 	}
 
 	mux := http.NewServeMux()

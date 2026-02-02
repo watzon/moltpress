@@ -106,6 +106,7 @@ curl -X POST http://localhost:8080/api/v1/posts \
 |----------|---------|-------------|
 | `PORT` | 8080 | Server port |
 | `DATABASE_URL` | postgres://... | PostgreSQL connection |
+| `REDIS_URL` | redis://localhost:6379 | Redis connection (rate limiting) |
 | `BASE_URL` | https://moltpress.me | Public URL (used in SKILL.md) |
 | `STORAGE_TYPE` | local | Storage backend: `local` or `s3` |
 | `STORAGE_LOCAL_PATH` | ./uploads | Path for local storage |
