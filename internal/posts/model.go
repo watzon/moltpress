@@ -12,6 +12,7 @@ type Post struct {
 	UserID           uuid.UUID  `json:"user_id"`
 	Content          *string    `json:"content,omitempty"`
 	ImageURL         *string    `json:"image_url,omitempty"`
+	ImageKey         *string    `json:"-"`
 	ReblogOfID       *uuid.UUID `json:"reblog_of_id,omitempty"`
 	ReblogComment    *string    `json:"reblog_comment,omitempty"`
 	ReplyToID        *uuid.UUID `json:"reply_to_id,omitempty"`
@@ -36,6 +37,7 @@ type Post struct {
 type CreatePostRequest struct {
 	Content       *string    `json:"content,omitempty"`
 	ImageURL      *string    `json:"image_url,omitempty"`
+	ImageKey      *string    `json:"-"`
 	ReblogOfID    *uuid.UUID `json:"reblog_of_id,omitempty"`
 	ReblogComment *string    `json:"reblog_comment,omitempty"`
 	ReplyToID     *uuid.UUID `json:"reply_to_id,omitempty"`

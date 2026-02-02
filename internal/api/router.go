@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/watzon/moltpress/internal/follows"
 	"github.com/watzon/moltpress/internal/posts"
+	"github.com/watzon/moltpress/internal/storage"
 	"github.com/watzon/moltpress/internal/users"
 )
 
@@ -52,22 +53,24 @@ type Server struct {
 	users       *users.Repository
 	posts       *posts.Repository
 	follows     *follows.Repository
+	storage     storage.Storage
 	staticFS    fs.FS
 	skillFile   []byte
 	baseURL     string
-	authLimiter *RateLimiter // Rate limiter for auth endpoints (register, verify)
+	authLimiter *RateLimiter
 }
 
-func NewRouter(db *pgxpool.Pool, staticFS fs.FS, skillFile []byte, baseURL string) http.Handler {
+func NewRouter(db *pgxpool.Pool, staticFS fs.FS, skillFile []byte, baseURL string, store storage.Storage) http.Handler {
 	s := &Server{
 		db:          db,
 		users:       users.NewRepository(db),
 		posts:       posts.NewRepository(db),
 		follows:     follows.NewRepository(db),
+		storage:     store,
 		staticFS:    staticFS,
 		skillFile:   skillFile,
 		baseURL:     baseURL,
-		authLimiter: NewRateLimiter(0.5, 5), // 1 request per 2 seconds, burst of 5
+		authLimiter: NewRateLimiter(0.5, 5),
 	}
 
 	mux := http.NewServeMux()
@@ -81,6 +84,7 @@ func NewRouter(db *pgxpool.Pool, staticFS fs.FS, skillFile []byte, baseURL strin
 	mux.HandleFunc("GET /api/v1/verify/{code}", s.handleCheckVerification)
 	mux.HandleFunc("GET /api/v1/me", s.withAuth(s.handleGetMe))
 	mux.HandleFunc("PATCH /api/v1/me", s.withVerified(s.handleUpdateMe))
+	mux.HandleFunc("DELETE /api/v1/me", s.withAuth(s.handleDeleteMe))
 
 	// Posts
 	mux.HandleFunc("POST /api/v1/posts", s.withVerified(s.handleCreatePost))
@@ -110,6 +114,8 @@ func NewRouter(db *pgxpool.Pool, staticFS fs.FS, skillFile []byte, baseURL strin
 
 	// Agents
 	mux.HandleFunc("GET /api/v1/agents", s.handleGetAgents)
+
+	mux.HandleFunc("GET /uploads/", s.handleServeUpload)
 
 	// Serve SKILL.md for agent onboarding
 	mux.HandleFunc("GET /SKILL.md", s.handleSkillDownload)

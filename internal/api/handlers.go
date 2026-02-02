@@ -222,15 +222,105 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, updated.ToPublic())
 }
 
+func (s *Server) handleDeleteMe(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromContext(r)
+
+	err := s.users.Delete(r.Context(), user.ID)
+	if err != nil {
+		if errors.Is(err, users.ErrUserNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		slog.Error("failed to delete user", "error", err, "user_id", user.ID)
+		writeError(w, http.StatusInternalServerError, "failed to delete account")
+		return
+	}
+
+	slog.Info("user account deleted", "user_id", user.ID, "username", user.Username)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // Post handlers
 
 func (s *Server) handleCreatePost(w http.ResponseWriter, r *http.Request) {
 	user := getUserFromContext(r)
 
 	var req posts.CreatePostRequest
-	if err := parseJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
+
+	contentType := r.Header.Get("Content-Type")
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid multipart form or file too large")
+			return
+		}
+
+		if content := r.FormValue("content"); content != "" {
+			req.Content = &content
+		}
+		if reblogComment := r.FormValue("reblog_comment"); reblogComment != "" {
+			req.ReblogComment = &reblogComment
+		}
+		if reblogOfID := r.FormValue("reblog_of_id"); reblogOfID != "" {
+			if id, err := uuid.Parse(reblogOfID); err == nil {
+				req.ReblogOfID = &id
+			}
+		}
+		if replyToID := r.FormValue("reply_to_id"); replyToID != "" {
+			if id, err := uuid.Parse(replyToID); err == nil {
+				req.ReplyToID = &id
+			}
+		}
+		if tags := r.FormValue("tags"); tags != "" {
+			req.Tags = strings.Split(tags, ",")
+			for i := range req.Tags {
+				req.Tags[i] = strings.TrimSpace(req.Tags[i])
+			}
+		}
+
+		file, header, err := r.FormFile("image")
+		if err == nil {
+			defer file.Close()
+
+			fileContentType := header.Header.Get("Content-Type")
+			if !allowedContentTypes[fileContentType] {
+				writeError(w, http.StatusBadRequest, "invalid image type (allowed: jpeg, png, gif, webp)")
+				return
+			}
+
+			ext := ""
+			switch fileContentType {
+			case "image/jpeg":
+				ext = ".jpg"
+			case "image/png":
+				ext = ".png"
+			case "image/gif":
+				ext = ".gif"
+			case "image/webp":
+				ext = ".webp"
+			}
+
+			key := fmt.Sprintf("posts/%s%s", uuid.New().String(), ext)
+			if err := s.storage.Put(r.Context(), key, file, fileContentType); err != nil {
+				slog.Error("failed to upload image", "error", err)
+				writeError(w, http.StatusInternalServerError, "failed to upload image")
+				return
+			}
+
+			imageURL, err := s.storage.URL(r.Context(), key)
+			if err != nil {
+				slog.Error("failed to get image URL", "error", err)
+				writeError(w, http.StatusInternalServerError, "failed to process image")
+				return
+			}
+
+			req.ImageURL = &imageURL
+			req.ImageKey = &key
+		}
+	} else {
+		if err := parseJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
 	}
 
 	if req.Content == nil && req.ImageURL == nil && req.ReblogOfID == nil {
@@ -240,11 +330,13 @@ func (s *Server) handleCreatePost(w http.ResponseWriter, r *http.Request) {
 
 	post, err := s.posts.Create(r.Context(), user.ID, req)
 	if err != nil {
+		if req.ImageKey != nil {
+			s.storage.Delete(r.Context(), *req.ImageKey)
+		}
 		writeError(w, http.StatusInternalServerError, "failed to create post")
 		return
 	}
 
-	// Fetch full post with user info
 	fullPost, _ := s.posts.GetByID(r.Context(), post.ID, &user.ID)
 	if fullPost != nil {
 		post = fullPost
@@ -284,7 +376,7 @@ func (s *Server) handleDeletePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.posts.Delete(r.Context(), id, user.ID)
+	imageKey, err := s.posts.Delete(r.Context(), id, user.ID)
 	if err != nil {
 		if errors.Is(err, posts.ErrPostNotFound) {
 			writeError(w, http.StatusNotFound, "post not found")
@@ -292,6 +384,12 @@ func (s *Server) handleDeletePost(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, http.StatusInternalServerError, "failed to delete post")
 		return
+	}
+
+	if imageKey != nil {
+		if err := s.storage.Delete(r.Context(), *imageKey); err != nil {
+			slog.Error("failed to delete post image", "error", err, "key", *imageKey)
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -745,4 +843,48 @@ func (s *Server) handleSkillDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", "attachment; filename=\"SKILL.md\"")
 	content := bytes.ReplaceAll(s.skillFile, []byte("{{BASE_URL}}"), []byte(s.baseURL))
 	w.Write(content)
+}
+
+const maxUploadSize = 10 << 20
+
+var allowedContentTypes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/gif":  true,
+	"image/webp": true,
+}
+
+func (s *Server) handleServeUpload(w http.ResponseWriter, r *http.Request) {
+	key := strings.TrimPrefix(r.URL.Path, "/uploads/")
+	if key == "" {
+		writeError(w, http.StatusNotFound, "file not found")
+		return
+	}
+
+	reader, err := s.storage.Get(r.Context(), key)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "file not found")
+		return
+	}
+	defer reader.Close()
+
+	info, err := s.storage.Info(r.Context(), key)
+	if err == nil && info.ContentType != "" {
+		w.Header().Set("Content-Type", info.ContentType)
+	}
+
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+
+	buf := make([]byte, 32*1024)
+	for {
+		n, readErr := reader.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return
+			}
+		}
+		if readErr != nil {
+			return
+		}
+	}
 }

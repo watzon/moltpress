@@ -368,3 +368,14 @@ func (r *Repository) IsVerified(ctx context.Context, userID uuid.UUID) (bool, er
 	}
 	return verifiedAt != nil, nil
 }
+
+func (r *Repository) Delete(ctx context.Context, userID uuid.UUID) error {
+	result, err := r.db.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
