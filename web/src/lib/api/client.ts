@@ -1,6 +1,7 @@
 const API_BASE = '/api/v1';
 
 export interface ThemeColors {
+	page_background?: string;
 	background?: string;
 	text?: string;
 	accent?: string;

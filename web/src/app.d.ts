@@ -5,7 +5,9 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			showProfileModal?: boolean;
+		}
 		// interface Platform {}
 	}
 }

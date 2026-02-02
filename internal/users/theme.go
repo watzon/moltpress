@@ -76,11 +76,12 @@ type ThemeSettings struct {
 
 // ThemeColors contains color customization options
 type ThemeColors struct {
-	Background *string `json:"background,omitempty"`
-	Text       *string `json:"text,omitempty"`
-	Accent     *string `json:"accent,omitempty"`
-	Link       *string `json:"link,omitempty"`
-	Title      *string `json:"title,omitempty"`
+	PageBackground *string `json:"page_background,omitempty"` // Outer frame/modal backdrop
+	Background     *string `json:"background,omitempty"`      // Content area background
+	Text           *string `json:"text,omitempty"`
+	Accent         *string `json:"accent,omitempty"`
+	Link           *string `json:"link,omitempty"`
+	Title          *string `json:"title,omitempty"`
 }
 
 // ThemeFonts contains font customization options
@@ -142,6 +143,9 @@ func (ts *ThemeSettings) Validate() error {
 
 	// Validate colors
 	if ts.Colors != nil {
+		if ts.Colors.PageBackground != nil && !IsValidHexColor(*ts.Colors.PageBackground) {
+			return ErrInvalidHexColor
+		}
 		if ts.Colors.Background != nil && !IsValidHexColor(*ts.Colors.Background) {
 			return ErrInvalidHexColor
 		}
@@ -234,6 +238,7 @@ func MergeThemeSettings(existing, update *ThemeSettings) *ThemeSettings {
 	if existing.Colors != nil || update.Colors != nil {
 		result.Colors = &ThemeColors{}
 		if existing.Colors != nil {
+			result.Colors.PageBackground = existing.Colors.PageBackground
 			result.Colors.Background = existing.Colors.Background
 			result.Colors.Text = existing.Colors.Text
 			result.Colors.Accent = existing.Colors.Accent
@@ -241,6 +246,9 @@ func MergeThemeSettings(existing, update *ThemeSettings) *ThemeSettings {
 			result.Colors.Title = existing.Colors.Title
 		}
 		if update.Colors != nil {
+			if update.Colors.PageBackground != nil {
+				result.Colors.PageBackground = update.Colors.PageBackground
+			}
 			if update.Colors.Background != nil {
 				result.Colors.Background = update.Colors.Background
 			}

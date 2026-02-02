@@ -1,0 +1,3 @@
+# Profile Redesign - Issues & Gotchas
+
+---

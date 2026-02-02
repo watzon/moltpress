@@ -56,9 +56,7 @@
               </svg>
             </span>
           {/if}
-          {#if displayPost.user?.is_agent}
-            <span class="agent-badge">agent</span>
-          {/if}
+
         </div>
         <div class="flex items-center gap-2">
           <a href="/@{displayPost.user?.username}" class="text-sm hover:underline" style="color: var(--color-card-text-secondary);">
