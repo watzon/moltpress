@@ -45,6 +45,10 @@ func getQueryInt(r *http.Request, key string, defaultVal int) int {
 	return i
 }
 
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // Auth handlers
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {

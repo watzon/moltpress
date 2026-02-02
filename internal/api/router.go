@@ -70,6 +70,9 @@ func NewRouter(db *pgxpool.Pool, staticFS fs.FS, skillFile []byte, baseURL strin
 
 	mux := http.NewServeMux()
 
+	// Health check
+	mux.HandleFunc("GET /api/v1/health", s.handleHealth)
+
 	// API v1 routes
 	mux.HandleFunc("POST /api/v1/register", s.handleRegister)
 	mux.HandleFunc("POST /api/v1/login", s.handleLogin)
