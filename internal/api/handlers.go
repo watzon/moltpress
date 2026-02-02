@@ -229,6 +229,142 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, updated.ToPublic())
 }
 
+func (s *Server) handleUploadAvatar(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromContext(r)
+
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid multipart form or file too large")
+		return
+	}
+
+	file, header, err := r.FormFile("avatar")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "missing avatar file")
+		return
+	}
+	defer file.Close()
+
+	fileContentType := header.Header.Get("Content-Type")
+	if !allowedContentTypes[fileContentType] {
+		writeError(w, http.StatusBadRequest, "invalid image type (allowed: jpeg, png, gif, webp)")
+		return
+	}
+
+	ext, ok := extensionForContentType(fileContentType)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid image type (allowed: jpeg, png, gif, webp)")
+		return
+	}
+
+	oldAvatarKey, _, err := s.users.GetProfileImageKeys(r.Context(), user.ID)
+	if err != nil {
+		if errors.Is(err, users.ErrUserNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to load profile")
+		return
+	}
+
+	key := fmt.Sprintf("avatars/%s%s", user.ID.String(), ext)
+	if err := s.storage.Put(r.Context(), key, file, fileContentType); err != nil {
+		slog.Error("failed to upload avatar", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to upload avatar")
+		return
+	}
+
+	imageURL, err := s.storage.URL(r.Context(), key)
+	if err != nil {
+		slog.Error("failed to get avatar URL", "error", err)
+		_ = s.storage.Delete(r.Context(), key)
+		writeError(w, http.StatusInternalServerError, "failed to process avatar")
+		return
+	}
+
+	updated, err := s.users.UpdateAvatar(r.Context(), user.ID, imageURL, key)
+	if err != nil {
+		_ = s.storage.Delete(r.Context(), key)
+		writeError(w, http.StatusInternalServerError, "failed to update user")
+		return
+	}
+
+	if oldAvatarKey != nil && *oldAvatarKey != "" && *oldAvatarKey != key {
+		if err := s.storage.Delete(r.Context(), *oldAvatarKey); err != nil {
+			slog.Error("failed to delete old avatar", "error", err, "key", *oldAvatarKey)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, updated.ToPublic())
+}
+
+func (s *Server) handleUploadHeader(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromContext(r)
+
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid multipart form or file too large")
+		return
+	}
+
+	file, header, err := r.FormFile("header")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "missing header file")
+		return
+	}
+	defer file.Close()
+
+	fileContentType := header.Header.Get("Content-Type")
+	if !allowedContentTypes[fileContentType] {
+		writeError(w, http.StatusBadRequest, "invalid image type (allowed: jpeg, png, gif, webp)")
+		return
+	}
+
+	ext, ok := extensionForContentType(fileContentType)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid image type (allowed: jpeg, png, gif, webp)")
+		return
+	}
+
+	_, oldHeaderKey, err := s.users.GetProfileImageKeys(r.Context(), user.ID)
+	if err != nil {
+		if errors.Is(err, users.ErrUserNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to load profile")
+		return
+	}
+
+	key := fmt.Sprintf("headers/%s%s", user.ID.String(), ext)
+	if err := s.storage.Put(r.Context(), key, file, fileContentType); err != nil {
+		slog.Error("failed to upload header", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to upload header")
+		return
+	}
+
+	imageURL, err := s.storage.URL(r.Context(), key)
+	if err != nil {
+		slog.Error("failed to get header URL", "error", err)
+		_ = s.storage.Delete(r.Context(), key)
+		writeError(w, http.StatusInternalServerError, "failed to process header")
+		return
+	}
+
+	updated, err := s.users.UpdateHeader(r.Context(), user.ID, imageURL, key)
+	if err != nil {
+		_ = s.storage.Delete(r.Context(), key)
+		writeError(w, http.StatusInternalServerError, "failed to update user")
+		return
+	}
+
+	if oldHeaderKey != nil && *oldHeaderKey != "" && *oldHeaderKey != key {
+		if err := s.storage.Delete(r.Context(), *oldHeaderKey); err != nil {
+			slog.Error("failed to delete old header", "error", err, "key", *oldHeaderKey)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, updated.ToPublic())
+}
+
 func (s *Server) handleDeleteMe(w http.ResponseWriter, r *http.Request) {
 	user := getUserFromContext(r)
 
@@ -937,6 +1073,21 @@ var allowedContentTypes = map[string]bool{
 	"image/png":  true,
 	"image/gif":  true,
 	"image/webp": true,
+}
+
+func extensionForContentType(contentType string) (string, bool) {
+	switch contentType {
+	case "image/jpeg":
+		return ".jpg", true
+	case "image/png":
+		return ".png", true
+	case "image/gif":
+		return ".gif", true
+	case "image/webp":
+		return ".webp", true
+	default:
+		return "", false
+	}
 }
 
 func (s *Server) handleServeUpload(w http.ResponseWriter, r *http.Request) {

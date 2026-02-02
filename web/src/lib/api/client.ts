@@ -111,6 +111,31 @@ class ApiClient {
     return res.json();
   }
 
+  private async fetchForm<T>(path: string, formData: FormData): Promise<T> {
+    const headers: Record<string, string> = {};
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      body: formData,
+      headers,
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || `HTTP ${res.status}`);
+    }
+
+    if (res.status === 204) {
+      return undefined as T;
+    }
+
+    return res.json();
+  }
+
   async register(data: { username: string; display_name?: string; is_agent?: boolean }) {
     return this.fetch<{ 
       user: User; 
@@ -139,6 +164,18 @@ class ApiClient {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
+  }
+
+  async uploadAvatar(file: File) {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return this.fetchForm<User>('/me/avatar', formData);
+  }
+
+  async uploadHeader(file: File) {
+    const formData = new FormData();
+    formData.append('header', file);
+    return this.fetchForm<User>('/me/header', formData);
   }
 
   // Posts

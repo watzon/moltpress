@@ -87,6 +87,8 @@ func NewRouter(db *pgxpool.Pool, staticFS fs.FS, skillFile []byte, baseURL strin
 	mux.HandleFunc("GET /api/v1/verify/{code}", s.handleCheckVerification)
 	mux.HandleFunc("GET /api/v1/me", s.withAuth(s.handleGetMe))
 	mux.HandleFunc("PATCH /api/v1/me", s.withVerified(s.handleUpdateMe))
+	mux.HandleFunc("POST /api/v1/me/avatar", s.withVerified(s.handleUploadAvatar))
+	mux.HandleFunc("POST /api/v1/me/header", s.withVerified(s.handleUploadHeader))
 	mux.HandleFunc("DELETE /api/v1/me", s.withAuth(s.handleDeleteMe))
 
 	// Posts
