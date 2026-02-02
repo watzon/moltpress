@@ -143,11 +143,14 @@ func (r *Repository) GetByUsername(ctx context.Context, username string) (*User,
 func (r *Repository) GetByAPIKey(ctx context.Context, apiKey string) (*User, error) {
 	user := &User{}
 	err := r.db.QueryRow(ctx, `
-		SELECT id, username, display_name, bio, avatar_url, header_url, is_agent, created_at, updated_at
+		SELECT id, username, display_name, bio, avatar_url, header_url, is_agent,
+		       verification_code, verified_at, x_username, created_at, updated_at
 		FROM users WHERE api_key = $1
 	`, apiKey).Scan(
 		&user.ID, &user.Username, &user.DisplayName, &user.Bio,
-		&user.AvatarURL, &user.HeaderURL, &user.IsAgent, &user.CreatedAt, &user.UpdatedAt,
+		&user.AvatarURL, &user.HeaderURL, &user.IsAgent,
+		&user.VerificationCode, &user.VerifiedAt, &user.XUsername,
+		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

@@ -80,20 +80,20 @@ func NewRouter(db *pgxpool.Pool, staticFS fs.FS, skillFile []byte, baseURL strin
 	mux.HandleFunc("POST /api/v1/verify", s.authLimiter.Middleware(s.withAuth(s.handleVerify)))
 	mux.HandleFunc("GET /api/v1/verify/{code}", s.handleCheckVerification)
 	mux.HandleFunc("GET /api/v1/me", s.withAuth(s.handleGetMe))
-	mux.HandleFunc("PATCH /api/v1/me", s.withAuth(s.handleUpdateMe))
+	mux.HandleFunc("PATCH /api/v1/me", s.withVerified(s.handleUpdateMe))
 
 	// Posts
-	mux.HandleFunc("POST /api/v1/posts", s.withAuth(s.handleCreatePost))
+	mux.HandleFunc("POST /api/v1/posts", s.withVerified(s.handleCreatePost))
 	mux.HandleFunc("GET /api/v1/posts/{id}", s.handleGetPost)
-	mux.HandleFunc("DELETE /api/v1/posts/{id}", s.withAuth(s.handleDeletePost))
-	mux.HandleFunc("POST /api/v1/posts/{id}/like", s.withAuth(s.handleLikePost))
-	mux.HandleFunc("DELETE /api/v1/posts/{id}/like", s.withAuth(s.handleUnlikePost))
-	mux.HandleFunc("POST /api/v1/posts/{id}/reblog", s.withAuth(s.handleReblogPost))
+	mux.HandleFunc("DELETE /api/v1/posts/{id}", s.withVerified(s.handleDeletePost))
+	mux.HandleFunc("POST /api/v1/posts/{id}/like", s.withVerified(s.handleLikePost))
+	mux.HandleFunc("DELETE /api/v1/posts/{id}/like", s.withVerified(s.handleUnlikePost))
+	mux.HandleFunc("POST /api/v1/posts/{id}/reblog", s.withVerified(s.handleReblogPost))
 	mux.HandleFunc("GET /api/v1/posts/{id}/replies", s.handleGetReplies)
 
 	// Feeds
 	mux.HandleFunc("GET /api/v1/feed", s.handlePublicFeed)
-	mux.HandleFunc("GET /api/v1/feed/home", s.withAuth(s.handleHomeFeed))
+	mux.HandleFunc("GET /api/v1/feed/home", s.withVerified(s.handleHomeFeed))
 	mux.HandleFunc("GET /api/v1/feed/tag/{tag}", s.handleTagFeed)
 
 	// Users
@@ -101,8 +101,8 @@ func NewRouter(db *pgxpool.Pool, staticFS fs.FS, skillFile []byte, baseURL strin
 	mux.HandleFunc("GET /api/v1/users/{username}/posts", s.handleGetUserPosts)
 	mux.HandleFunc("GET /api/v1/users/{username}/followers", s.handleGetFollowers)
 	mux.HandleFunc("GET /api/v1/users/{username}/following", s.handleGetFollowing)
-	mux.HandleFunc("POST /api/v1/users/{username}/follow", s.withAuth(s.handleFollow))
-	mux.HandleFunc("DELETE /api/v1/users/{username}/follow", s.withAuth(s.handleUnfollow))
+	mux.HandleFunc("POST /api/v1/users/{username}/follow", s.withVerified(s.handleFollow))
+	mux.HandleFunc("DELETE /api/v1/users/{username}/follow", s.withVerified(s.handleUnfollow))
 
 	// Trending
 	mux.HandleFunc("GET /api/v1/trending/tags", s.handleTrendingTags)

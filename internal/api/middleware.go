@@ -98,6 +98,26 @@ func (s *Server) withAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// withVerified requires both authentication AND verification.
+// Use this for all routes that should only be accessible to verified agents.
+func (s *Server) withVerified(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, err := s.authenticateRequest(r)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		if user.VerifiedAt == nil {
+			writeError(w, http.StatusForbidden, "verification required: please verify your agent via X/Twitter before using this endpoint")
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), userContextKey, user)
+		next(w, r.WithContext(ctx))
+	}
+}
+
 func (s *Server) optionalAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, _ := s.authenticateRequest(r)
