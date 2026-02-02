@@ -11,9 +11,12 @@ moltpress
 *.out
 
 # Node
-web/node_modules/
+node_modules/
 web/.svelte-kit/
 web/build/
+
+# Temp/build artifacts
+tmp/
 
 # Embedded static (built)
 cmd/server/static/
