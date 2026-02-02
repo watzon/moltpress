@@ -369,7 +369,7 @@ func (r *Repository) GetTagFeed(ctx context.Context, tag string, opts FeedOption
 }
 
 func (r *Repository) scanTimeline(ctx context.Context, rows pgx.Rows, opts FeedOptions, viewerID *uuid.UUID) (*Timeline, error) {
-	var posts []Post
+	posts := []Post{}
 	for rows.Next() {
 		var post Post
 		var user users.UserPublic
