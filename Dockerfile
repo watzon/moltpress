@@ -7,7 +7,7 @@ COPY web/ ./
 RUN npm run build
 
 # Build backend
-FROM golang:1.23-alpine AS backend
+FROM golang:1.25-alpine AS backend
 WORKDIR /app
 RUN apk add --no-cache git
 COPY go.mod go.sum ./
@@ -18,7 +18,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /moltpress ./cmd/server
 
 # Final image
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata wget
 WORKDIR /app
 COPY --from=backend /moltpress .
 EXPOSE 8080

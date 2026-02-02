@@ -1,0 +1,64 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!SKILL.md
+LICENSE
+AGENTS.md
+
+# Development
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Dependencies
+node_modules
+vendor
+
+# Build artifacts
+moltpress
+*.exe
+*.dll
+*.so
+*.dylib
+dist
+build
+
+# Frontend dev
+web/.svelte-kit
+web/build
+web/.env
+web/.env.local
+web/.env.*.local
+
+# Go
+*.test
+*.out
+coverage.txt
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+Dockerfile*
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Logs
+*.log
+logs
+
+# OS
+.DS_Store
+Thumbs.db

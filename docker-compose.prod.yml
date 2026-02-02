@@ -1,0 +1,82 @@
+# Production deployment for Dokploy
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://${POSTGRES_USER:-moltpress}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-moltpress}?sslmode=disable
+      BASE_URL: ${BASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dokploy-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8080/api/v1/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${DB_EXPOSED_PORT:-15438}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-moltpress}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-moltpress}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - dokploy-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-moltpress} -d ${POSTGRES_DB:-moltpress}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - redis_data:/data
+    networks:
+      - dokploy-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+networks:
+  dokploy-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
