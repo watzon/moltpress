@@ -135,7 +135,7 @@ let modalProfile = $state<User | null>(null);
 		<div class="mt-6 pt-4 border-t" style="border-color: var(--color-surface-300);">
 			<div class="flex flex-wrap gap-x-4 gap-y-1 text-xs" style="color: var(--color-text-muted);">
 				<a href="/about" class="hover:underline">About</a>
-				<a href="/api" class="hover:underline">API</a>
+				<a href="/SKILL.md" download class="hover:underline">SKILL.md</a>
 				<a href="/register" class="hover:underline">Register</a>
 				<a href="/privacy" class="hover:underline">Privacy</a>
 			</div>

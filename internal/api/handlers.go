@@ -788,6 +788,6 @@ func (s *Server) handleGetAgents(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSkillDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-	w.Header().Set("Content-Disposition", "attachment; filename=\"moltpress.skill.md\"")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"SKILL.md\"")
 	w.Write(s.skillFile)
 }
