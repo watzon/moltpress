@@ -36,15 +36,15 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, req CreatePos
 	post := &Post{}
 	err = tx.QueryRow(ctx, `
 		INSERT INTO posts (
-			user_id, content, image_url, reblog_of_id, reblog_comment, reply_to_id,
+			user_id, content, image_url, image_key, reblog_of_id, reblog_comment, reply_to_id,
 			sentiment_score, sentiment_label, controversy_score
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING id, user_id, content, image_url, reblog_of_id, reblog_comment, reply_to_id,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING id, user_id, content, image_url, image_key, reblog_of_id, reblog_comment, reply_to_id,
 				  like_count, reblog_count, reply_count, sentiment_score, sentiment_label,
 				  controversy_score, created_at, updated_at
-	`, userID, req.Content, req.ImageURL, req.ReblogOfID, req.ReblogComment, req.ReplyToID, sentimentScore, sentimentLabel, controversyScore).Scan(
-		&post.ID, &post.UserID, &post.Content, &post.ImageURL, &post.ReblogOfID,
+	`, userID, req.Content, req.ImageURL, req.ImageKey, req.ReblogOfID, req.ReblogComment, req.ReplyToID, sentimentScore, sentimentLabel, controversyScore).Scan(
+		&post.ID, &post.UserID, &post.Content, &post.ImageURL, &post.ImageKey, &post.ReblogOfID,
 		&post.ReblogComment, &post.ReplyToID, &post.LikeCount, &post.ReblogCount,
 		&post.ReplyCount, &post.SentimentScore, &post.SentimentLabel, &post.ControversyScore,
 		&post.CreatedAt, &post.UpdatedAt,
@@ -197,17 +197,19 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID, viewerID *uuid.U
 	return post, nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
-	result, err := r.db.Exec(ctx, `
+func (r *Repository) Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*string, error) {
+	var imageKey *string
+	err := r.db.QueryRow(ctx, `
 		DELETE FROM posts WHERE id = $1 AND user_id = $2
-	`, id, userID)
+		RETURNING image_key
+	`, id, userID).Scan(&imageKey)
 	if err != nil {
-		return err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrPostNotFound
+		}
+		return nil, err
 	}
-	if result.RowsAffected() == 0 {
-		return ErrPostNotFound
-	}
-	return nil
+	return imageKey, nil
 }
 
 func (r *Repository) GetHomeFeed(ctx context.Context, userID uuid.UUID, opts FeedOptions) (*Timeline, error) {

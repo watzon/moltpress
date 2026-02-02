@@ -153,6 +153,12 @@ func Migrate(db *pgxpool.Pool) error {
 			CREATE INDEX IF NOT EXISTS idx_posts_controversy_score ON posts(controversy_score DESC);
 		`,
 		},
+		{
+			name: "006_add_image_key",
+			sql: `
+			ALTER TABLE posts ADD COLUMN IF NOT EXISTS image_key TEXT;
+		`,
+		},
 	}
 
 	for _, m := range migrations {
