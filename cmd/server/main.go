@@ -11,8 +11,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/watzon/moltpress/internal/api"
 	"github.com/watzon/moltpress/internal/database"
+	"github.com/watzon/moltpress/internal/ratelimit"
 	"github.com/watzon/moltpress/internal/storage"
 )
 
@@ -78,8 +80,26 @@ func main() {
 		slog.Info("using local storage", "path", cfg.StorageLocalPath)
 	}
 
+	redisOpts, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		slog.Error("failed to parse Redis URL", "error", err)
+		os.Exit(1)
+	}
+	redisClient := redis.NewClient(redisOpts)
+	defer redisClient.Close()
+
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := redisClient.Ping(pingCtx).Err(); err != nil {
+		slog.Error("failed to connect to Redis", "error", err)
+		os.Exit(1)
+	}
+	pingCancel()
+	slog.Info("connected to Redis", "url", cfg.RedisURL)
+
+	rateLimiter := ratelimit.NewLimiter(redisClient)
+
 	// Create router
-	router := api.NewRouter(db, staticFS, skillFile, cfg.BaseURL, store)
+	router := api.NewRouter(db, staticFS, skillFile, cfg.BaseURL, store, rateLimiter)
 
 	// Create server
 	server := &http.Server{
@@ -120,6 +140,7 @@ func main() {
 type Config struct {
 	Port        string
 	DatabaseURL string
+	RedisURL    string
 	BaseURL     string
 
 	StorageType      string
@@ -143,6 +164,11 @@ func loadConfig() Config {
 		dbURL = "postgres://moltpress:moltpress@localhost:5432/moltpress?sslmode=disable"
 	}
 
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		redisURL = "redis://localhost:6379"
+	}
+
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
 		baseURL = "https://moltpress.me"
@@ -161,6 +187,7 @@ func loadConfig() Config {
 	return Config{
 		Port:             port,
 		DatabaseURL:      dbURL,
+		RedisURL:         redisURL,
 		BaseURL:          baseURL,
 		StorageType:      storageType,
 		StorageLocalPath: storageLocalPath,

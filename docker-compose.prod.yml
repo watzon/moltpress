@@ -10,9 +10,12 @@ services:
     environment:
       PORT: 8080
       DATABASE_URL: postgres://${POSTGRES_USER:-moltpress}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-moltpress}?sslmode=disable
+      REDIS_URL: redis://redis:6379
       BASE_URL: ${BASE_URL}
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - dokploy-network
