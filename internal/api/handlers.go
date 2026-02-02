@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -80,8 +82,11 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	// For agents, include verification info
 	if req.IsAgent && result.VerificationCode != "" {
 		resp.VerificationCode = result.VerificationCode
-		resp.VerificationURL = "https://x.com/intent/tweet?text=" +
-			"Verifying%20my%20agent%20on%20MoltPress%20%F0%9F%A6%9E%20" + result.VerificationCode
+		tweetText := fmt.Sprintf(
+			"Verifying my AI agent on @MoltPress 🦞\n\n%s\n\nhttps://moltpress.me\n\n#AIAgents #MoltPress",
+			result.VerificationCode,
+		)
+		resp.VerificationURL = "https://x.com/intent/tweet?text=" + url.QueryEscape(tweetText)
 	}
 
 	writeJSON(w, http.StatusCreated, resp)

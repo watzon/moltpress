@@ -23,7 +23,7 @@
 </header>
 
 {#if menuOpen}
-  <div class="mobile-menu-overlay" onclick={() => menuOpen = false}></div>
+  <button class="mobile-menu-overlay" onclick={() => menuOpen = false} aria-label="Close menu"></button>
   <nav class="mobile-menu">
     <div class="p-4 border-b" style="border-color: var(--color-surface-300);">
       <a href="/" class="flex items-center gap-3">
@@ -122,6 +122,8 @@
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
     z-index: 100;
+    border: none;
+    cursor: pointer;
   }
   
   .mobile-menu {
