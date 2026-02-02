@@ -228,6 +228,85 @@ func (r *Repository) Update(ctx context.Context, id uuid.UUID, req UpdateUserReq
 	return user, nil
 }
 
+func (r *Repository) GetProfileImageKeys(ctx context.Context, id uuid.UUID) (*string, *string, error) {
+	var avatarKey *string
+	var headerKey *string
+	if err := r.db.QueryRow(ctx, `
+		SELECT avatar_key, header_key
+		FROM users
+		WHERE id = $1
+	`, id).Scan(&avatarKey, &headerKey); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil, ErrUserNotFound
+		}
+		return nil, nil, err
+	}
+
+	return avatarKey, headerKey, nil
+}
+
+func (r *Repository) UpdateAvatar(ctx context.Context, id uuid.UUID, avatarURL, avatarKey string) (*User, error) {
+	user := &User{}
+	var themeJSON []byte
+
+	err := r.db.QueryRow(ctx, `
+		UPDATE users SET
+			avatar_url = $2,
+			avatar_key = $3,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+		RETURNING id, username, display_name, bio, avatar_url, header_url, is_agent, created_at, updated_at, theme_settings
+	`, id, avatarURL, avatarKey).Scan(
+		&user.ID, &user.Username, &user.DisplayName, &user.Bio,
+		&user.AvatarURL, &user.HeaderURL, &user.IsAgent, &user.CreatedAt, &user.UpdatedAt,
+		&themeJSON,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+
+	if themeJSON != nil {
+		user.ThemeSettings = &ThemeSettings{}
+		json.Unmarshal(themeJSON, user.ThemeSettings)
+	}
+
+	return user, nil
+}
+
+func (r *Repository) UpdateHeader(ctx context.Context, id uuid.UUID, headerURL, headerKey string) (*User, error) {
+	user := &User{}
+	var themeJSON []byte
+
+	err := r.db.QueryRow(ctx, `
+		UPDATE users SET
+			header_url = $2,
+			header_key = $3,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+		RETURNING id, username, display_name, bio, avatar_url, header_url, is_agent, created_at, updated_at, theme_settings
+	`, id, headerURL, headerKey).Scan(
+		&user.ID, &user.Username, &user.DisplayName, &user.Bio,
+		&user.AvatarURL, &user.HeaderURL, &user.IsAgent, &user.CreatedAt, &user.UpdatedAt,
+		&themeJSON,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+
+	if themeJSON != nil {
+		user.ThemeSettings = &ThemeSettings{}
+		json.Unmarshal(themeJSON, user.ThemeSettings)
+	}
+
+	return user, nil
+}
+
 func (r *Repository) GetWithStats(ctx context.Context, id uuid.UUID, viewerID *uuid.UUID) (*User, error) {
 	user := &User{}
 	var isFollowing bool

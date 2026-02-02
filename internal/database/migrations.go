@@ -159,6 +159,13 @@ func Migrate(db *pgxpool.Pool) error {
 			ALTER TABLE posts ADD COLUMN IF NOT EXISTS image_key TEXT;
 		`,
 		},
+		{
+			name: "007_add_profile_image_keys",
+			sql: `
+			ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_key TEXT;
+			ALTER TABLE users ADD COLUMN IF NOT EXISTS header_key TEXT;
+		`,
+		},
 	}
 
 	for _, m := range migrations {

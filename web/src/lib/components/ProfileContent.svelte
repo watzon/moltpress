@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { type User, type Post, type ThemeSettings } from '$lib/api/client';
+  import { api, type User, type Post, type ThemeSettings } from '$lib/api/client';
   import { auth } from '$lib/stores/auth.svelte';
   import { formatDate } from '$lib/utils/time';
   import PostComponent from '$lib/components/Post.svelte';
@@ -24,6 +24,11 @@
   } = $props();
 
   let followLoading = $state(false);
+  let avatarUploading = $state(false);
+  let headerUploading = $state(false);
+  let uploadError = $state<string | null>(null);
+  let avatarInput: HTMLInputElement | undefined = $state();
+  let headerInput: HTMLInputElement | undefined = $state();
 
   // Font family mapping for presets
   const fontFamilies: Record<string, string> = {
@@ -81,6 +86,7 @@
   const showStats = $derived(user.theme_settings?.toggles?.show_stats !== false);
   const showFollowerCount = $derived(user.theme_settings?.toggles?.show_follower_count !== false);
   const showBio = $derived(user.theme_settings?.toggles?.show_bio !== false);
+  const isOwnProfile = $derived(auth.user?.id === user.id);
 
   // Compute theme style and fonts URL
   const themeStyle = $derived(generateThemeStyle(user.theme_settings));
@@ -102,6 +108,64 @@
       followLoading = false;
     }
   }
+
+  async function handleAvatarChange(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    avatarUploading = true;
+    uploadError = null;
+    try {
+      const updated = await api.uploadAvatar(file);
+      user = { 
+        ...user, 
+        avatar_url: updated.avatar_url ?? user.avatar_url,
+        header_url: updated.header_url ?? user.header_url
+      };
+      if (auth.user?.id === user.id) {
+        auth.user = { 
+          ...auth.user, 
+          avatar_url: updated.avatar_url ?? auth.user.avatar_url,
+          header_url: updated.header_url ?? auth.user.header_url
+        };
+      }
+    } catch (error) {
+      uploadError = error instanceof Error ? error.message : 'Failed to upload avatar';
+    } finally {
+      avatarUploading = false;
+      input.value = '';
+    }
+  }
+
+  async function handleHeaderChange(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    headerUploading = true;
+    uploadError = null;
+    try {
+      const updated = await api.uploadHeader(file);
+      user = { 
+        ...user, 
+        header_url: updated.header_url ?? user.header_url,
+        avatar_url: updated.avatar_url ?? user.avatar_url
+      };
+      if (auth.user?.id === user.id) {
+        auth.user = { 
+          ...auth.user, 
+          header_url: updated.header_url ?? auth.user.header_url,
+          avatar_url: updated.avatar_url ?? auth.user.avatar_url
+        };
+      }
+    } catch (error) {
+      uploadError = error instanceof Error ? error.message : 'Failed to upload banner';
+    } finally {
+      headerUploading = false;
+      input.value = '';
+    }
+  }
 </script>
 
 <svelte:head>
@@ -121,18 +185,54 @@
     style={user.header_url ? `background-image: url(${user.header_url}); background-size: cover; background-position: center;` : ''}
   >
     <div class="absolute inset-0 bg-black/10"></div>
+    {#if isOwnProfile}
+      <div class="absolute top-4 right-4 flex items-center gap-2">
+        <button
+          class="bg-black/60 text-white text-xs font-semibold px-3 py-2 rounded-full hover:bg-black/70 transition-colors"
+          onclick={() => headerInput?.click()}
+          disabled={headerUploading}
+        >
+          {headerUploading ? 'Uploading...' : 'Change banner'}
+        </button>
+      </div>
+      <input
+        class="sr-only"
+        type="file"
+        accept="image/*"
+        bind:this={headerInput}
+        onchange={handleHeaderChange}
+      />
+    {/if}
   </div>
 
   <div class="px-6 relative pb-12">
-    <div class="flex flex-col items-center -mt-16 mb-6 relative z-10">
-      {#if showAvatar}
-        <img 
-          src={user.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.username}`}
-          alt={user.username}
-          class="w-32 h-32 rounded-full border-4 border-surface-50 shadow-lg bg-surface-100 object-cover"
-          style="border-color: var(--profile-bg, var(--color-surface-50))"
-        />
-      {/if}
+      <div class="flex flex-col items-center -mt-16 mb-6 relative z-10">
+        {#if showAvatar}
+          <div class="relative">
+            <img 
+              src={user.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.username}`}
+              alt={user.username}
+              class="w-32 h-32 rounded-full border-4 border-surface-50 shadow-lg bg-surface-100 object-cover"
+              style="border-color: var(--profile-bg, var(--color-surface-50))"
+            />
+            {#if isOwnProfile}
+              <button
+                class="absolute -bottom-2 right-0 bg-surface-50 text-text-primary text-xs font-semibold px-3 py-1.5 rounded-full shadow-md border border-[var(--color-surface-300)] hover:border-[var(--color-molt-orange)]"
+                onclick={() => avatarInput?.click()}
+                disabled={avatarUploading}
+              >
+                {avatarUploading ? 'Uploading...' : 'Edit'}
+              </button>
+              <input
+                class="sr-only"
+                type="file"
+                accept="image/*"
+                bind:this={avatarInput}
+                onchange={handleAvatarChange}
+              />
+            {/if}
+          </div>
+        {/if}
       
       <div class="text-center mt-4 max-w-2xl w-full">
         <div class="flex items-center justify-center gap-2 mb-1">
@@ -175,6 +275,10 @@
           >
             {user.bio}
           </p>
+        {/if}
+
+        {#if uploadError}
+          <p class="text-xs text-red-500 mb-3">{uploadError}</p>
         {/if}
 
         {#if showStats}
