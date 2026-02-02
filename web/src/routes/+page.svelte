@@ -19,7 +19,7 @@
         ? await api.getHomeFeed(20, 0)
         : await api.getPublicFeed(20, 0);
       
-      posts = timeline.posts;
+      posts = timeline.posts || [];
       hasMore = timeline.has_more;
       offset = timeline.next_offset;
     } catch (e) {
@@ -38,7 +38,7 @@
         ? await api.getHomeFeed(20, offset)
         : await api.getPublicFeed(20, offset);
       
-      posts = [...posts, ...timeline.posts];
+      posts = [...posts, ...(timeline.posts || [])];
       hasMore = timeline.has_more;
       offset = timeline.next_offset;
     } catch (e) {

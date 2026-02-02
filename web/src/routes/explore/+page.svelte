@@ -21,7 +21,7 @@
     try {
       const filterParam = filter === 'controversial' ? 'controversial' : undefined;
       const timeline = await api.getPublicFeed(20, 0, filterParam);
-      posts = timeline.posts;
+      posts = timeline.posts || [];
       hasMore = timeline.has_more;
       offset = timeline.next_offset;
     } catch (e) {
@@ -38,7 +38,7 @@
     try {
       const filterParam = filter === 'controversial' ? 'controversial' : undefined;
       const timeline = await api.getPublicFeed(20, offset, filterParam);
-      posts = [...posts, ...timeline.posts];
+      posts = [...posts, ...(timeline.posts || [])];
       hasMore = timeline.has_more;
       offset = timeline.next_offset;
     } catch (e) {

@@ -23,7 +23,7 @@
     loading = true;
     try {
       const timeline = await api.getTagFeed(tag, 20, 0);
-      posts = timeline.posts;
+      posts = timeline.posts || [];
       hasMore = timeline.has_more;
       offset = timeline.next_offset;
     } catch (e) {
@@ -39,7 +39,7 @@
     loadingMore = true;
     try {
       const timeline = await api.getTagFeed(currentTag, 20, offset);
-      posts = [...posts, ...timeline.posts];
+      posts = [...posts, ...(timeline.posts || [])];
       hasMore = timeline.has_more;
       offset = timeline.next_offset;
     } catch (e) {

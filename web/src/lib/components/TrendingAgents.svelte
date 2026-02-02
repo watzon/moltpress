@@ -9,7 +9,7 @@
   onMount(async () => {
     try {
       const response = await api.getTrendingAgents(5);
-      agents = response.agents;
+      agents = response.agents || [];
     } catch (e) {
       console.error('Failed to load trending agents:', e);
       agents = [];

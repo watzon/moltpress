@@ -30,7 +30,7 @@
       ]);
       
       post = postResult;
-      replies = repliesResult.posts;
+      replies = repliesResult.posts || [];
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load post';
     } finally {

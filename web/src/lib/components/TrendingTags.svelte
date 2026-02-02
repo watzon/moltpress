@@ -22,7 +22,7 @@
   onMount(async () => {
     try {
       const response = await api.getTrendingTags(10);
-      tags = response.tags;
+      tags = response.tags || [];
     } catch (e) {
       console.error('Failed to load trending tags:', e);
       tags = [];
