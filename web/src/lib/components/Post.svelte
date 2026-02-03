@@ -5,6 +5,7 @@
   let { post, showReblogSource = true }: { post: Post; showReblogSource?: boolean } = $props();
 
   let showMenu = $state(false);
+  let lightboxOpen = $state(false);
 
   const displayPost = $derived(post.reblog_of || post);
   const isReblog = $derived(!!post.reblog_of);
@@ -19,7 +20,38 @@
       navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}`);
     }
   }
+
+  function openLightbox() {
+    lightboxOpen = true;
+  }
+
+  function closeLightbox() {
+    lightboxOpen = false;
+  }
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (!lightboxOpen) return;
+
+    if (event.key === 'Escape') {
+      closeLightbox();
+    }
+  }
+
+  function handleOverlayKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      closeLightbox();
+    }
+  }
+
+  function handleOverlayClick(event: MouseEvent) {
+    if (event.currentTarget === event.target) {
+      closeLightbox();
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <article class="post-card overflow-hidden">
   {#if isReblog && showReblogSource}
@@ -45,8 +77,8 @@
         />
       </a>
       <div class="flex-1 min-w-0">
-        <div class="flex items-center gap-2 flex-wrap">
-          <a href="/@{displayPost.user?.username}" class="font-bold hover:underline" style="color: var(--color-card-text);">
+        <div class="flex items-center gap-2 min-w-0">
+          <a href="/@{displayPost.user?.username}" class="font-bold hover:underline truncate min-w-0" style="color: var(--color-card-text);">
             {displayPost.user?.display_name || displayPost.user?.username}
           </a>
           {#if displayPost.user?.is_verified}
@@ -58,13 +90,9 @@
           {/if}
 
         </div>
-        <div class="flex items-center gap-2">
-          <a href="/@{displayPost.user?.username}" class="text-sm hover:underline" style="color: var(--color-card-text-secondary);">
-            @{displayPost.user?.username}
-          </a>
-          <span style="color: var(--color-card-text-muted);">·</span>
-          <a href="/post/{post.id}" class="text-sm hover:underline" style="color: var(--color-card-text-muted);">
-            {formatDistanceToNow(displayPost.created_at)}
+        <div class="text-sm">
+          <a href="/post/{post.id}" class="hover:underline" style="color: var(--color-card-text-muted);">
+            {#if isReblog}Reposted · {/if}{formatDistanceToNow(displayPost.created_at)}
           </a>
         </div>
       </div>
@@ -82,12 +110,19 @@
       {/if}
 
       {#if displayPost.image_url}
-        <img 
-          src={displayPost.image_url} 
-          alt="Post image"
-          class="rounded-xl max-h-[500px] w-full object-cover border"
-          style="border-color: var(--color-surface-300);"
-        />
+        <button
+          type="button"
+          class="lightbox-trigger"
+          onclick={openLightbox}
+          aria-label="Open image"
+        >
+          <img
+            src={displayPost.image_url}
+            alt={`Post by @${displayPost.user?.username || 'user'}`}
+            class="rounded-xl max-h-[500px] w-full object-cover border"
+            style="border-color: var(--color-surface-300);"
+          />
+        </button>
       {/if}
     </div>
 
@@ -147,5 +182,98 @@
         {/if}
       </div>
     </div>
+
   </div>
 </article>
+
+{#if lightboxOpen && displayPost.image_url}
+  <div
+    class="lightbox-overlay"
+    onclick={handleOverlayClick}
+    onkeydown={handleOverlayKeydown}
+    role="button"
+    aria-label="Close image"
+    tabindex="0"
+  >
+    <div class="lightbox-frame" role="dialog" aria-modal="true" aria-label="Post media">
+      <img
+        src={displayPost.image_url}
+        alt={`Post by @${displayPost.user?.username || 'user'}`}
+        class="lightbox-image"
+      />
+      <button type="button" class="lightbox-close" onclick={closeLightbox} aria-label="Close image">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .lightbox-trigger {
+    display: block;
+    width: 100%;
+    border-radius: 0.75rem;
+  }
+
+  .lightbox-trigger:hover img {
+    transform: scale(1.01);
+  }
+
+  .lightbox-trigger img {
+    transition: transform 180ms ease, box-shadow 180ms ease;
+  }
+
+  .lightbox-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 10, 15, 0.78);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    z-index: 60;
+  }
+
+  .lightbox-frame {
+    position: relative;
+    max-width: min(1000px, 92vw);
+    max-height: 90vh;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .lightbox-image {
+    width: 100%;
+    height: auto;
+    max-height: 90vh;
+    object-fit: contain;
+    border-radius: 1rem;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(20, 20, 24, 0.4);
+  }
+
+  .lightbox-close {
+    position: absolute;
+    top: -0.75rem;
+    right: -0.75rem;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 999px;
+    background: rgba(15, 15, 20, 0.85);
+    color: white;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  .lightbox-close:hover {
+    background: rgba(35, 35, 45, 0.95);
+  }
+</style>

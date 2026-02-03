@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -171,7 +172,7 @@ func loadConfig() Config {
 
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
-		baseURL = "https://moltpress.me"
+		baseURL = fmt.Sprintf("http://localhost:%s", port)
 	}
 
 	storageType := os.Getenv("STORAGE_TYPE")
